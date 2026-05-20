@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Put Screener</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:#0e0f11; --surface:#16181c; --surface2:#1e2128; --border:#2a2d35;
+    --border2:#363a45; --text:#e8eaf0; --muted:#8891a4;
+    --green:#3ecf8e; --amber:#f5a623; --red:#e05252; --blue:#4d9de0;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --mono:'SF Mono','Fira Code','Consolas',monospace;
+  }
+  body { background:var(--bg); color:var(--text); font-family:var(--sans); font-size:14px; min-height:100vh; }
+
+  /* LOGIN */
+  #login-screen { display:flex; align-items:center; justify-content:center; min-height:100vh; flex-direction:column; gap:8px; }
+  #login-screen h1 { font-size:20px; font-weight:500; margin-bottom:16px; }
+  .login-card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:28px 32px; width:340px; display:flex; flex-direction:column; gap:14px; }
+  .login-card input { background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); padding:10px 12px; font-size:14px; width:100%; outline:none; }
+  .login-card input:focus { border-color:var(--blue); }
+  .btn-primary { background:var(--blue); color:#fff; border:none; border-radius:7px; padding:10px; font-size:14px; cursor:pointer; font-weight:500; }
+  .btn-primary:hover { opacity:.85; }
+  .btn-skip { background:transparent; border:none; color:var(--muted); font-size:12px; cursor:pointer; padding:4px; }
+  #login-error { color:var(--red); font-size:13px; text-align:center; min-height:18px; }
+
+  /* MAIN */
+  #main-screen { display:none; flex-direction:column; height:100vh; }
+
+  /* TOPBAR */
+  .topbar { background:var(--surface); border-bottom:1px solid var(--border); padding:10px 20px; display:flex; align-items:center; gap:10px; flex-shrink:0; flex-wrap:wrap; }
+  .topbar h1 { font-size:15px; font-weight:600; flex:1; min-width:100px; }
+  .chip { background:var(--surface2); border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:12px; display:flex; gap:5px; align-items:center; }
+  .chip .lbl { color:var(--muted); }
+  .chip .val { font-weight:500; font-family:var(--mono); }
+  .g { color:var(--green); } .a { color:var(--amber); } .r { color:var(--red); }
+  .rec-badge { border-radius:6px; padding:4px 10px; font-size:12px; font-weight:500; border:1px solid; white-space:nowrap; }
+  .rec-badge.danger  { background:rgba(224,82,82,.12);  color:var(--red);   border-color:rgba(224,82,82,.3); }
+  .rec-badge.warning { background:rgba(245,166,35,.12); color:var(--amber); border-color:rgba(245,166,35,.3); }
+  .rec-badge.success { background:rgba(62,207,142,.12); color:var(--green); border-color:rgba(62,207,142,.3); }
+  .rec-badge.secondary { background:var(--surface2); color:var(--muted); border-color:var(--border); }
+  .logout-btn { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:6px; padding:4px 10px; font-size:12px; cursor:pointer; }
+  .logout-btn:hover { color:var(--text); }
+
+  .hedge-alert { background:rgba(245,166,35,.1); border-bottom:1px solid rgba(245,166,35,.3); padding:7px 20px; font-size:13px; color:var(--amber); display:none; align-items:center; gap:8px; flex-shrink:0; }
+
+  .positions-bar { border-bottom:1px solid var(--border); padding:0 20px; display:none; align-items:center; overflow-x:auto; flex-shrink:0; background:var(--surface); }
+  .pos-item { padding:7px 14px; border-right:1px solid var(--border); flex-shrink:0; }
+  .pos-item:last-child { border-right:none; }
+  .pos-sym { font-size:12px; font-weight:600; font-family:var(--mono); }
+  .pos-desc { font-size:11px; color:var(--muted); max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+  .app-body { display:flex; flex:1; overflow:hidden; }
+
+  /* SIDEBAR */
+  .sidebar { width:210px; flex-shrink:0; background:var(--surface); border-right:1px solid var(--border); padding:14px; display:flex; flex-direction:column; gap:12px; overflow-y:auto; }
+  .sidebar h3 { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; margin-bottom:5px; }
+  .sector-list { display:flex; flex-direction:column; gap:3px; }
+  .sector-item { display:flex; align-items:center; gap:7px; padding:3px 0; }
+  .sector-item input[type=checkbox] { accent-color:var(--blue); cursor:pointer; }
+  .sector-item label { font-size:13px; cursor:pointer; user-select:none; }
+  .sel-btns { display:flex; gap:5px; margin-bottom:6px; }
+  .sel-btns button { flex:1; background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:5px; padding:3px; font-size:11px; cursor:pointer; }
+  .sel-btns button:hover { color:var(--text); }
+  .custom-box { display:flex; flex-direction:column; gap:5px; }
+  .custom-box textarea { background:var(--surface2); border:1px solid var(--border); border-radius:7px; color:var(--text); padding:8px 10px; font-size:12px; resize:vertical; min-height:60px; font-family:var(--mono); outline:none; width:100%; }
+  .custom-box textarea:focus { border-color:var(--blue); }
+  .run-btn { background:var(--blue); color:#fff; border:none; border-radius:8px; padding:10px; font-size:14px; font-weight:600; cursor:pointer; width:100%; }
+  .run-btn:hover { opacity:.85; } .run-btn:disabled { opacity:.4; cursor:not-allowed; }
+  .acct-box { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; display:flex; flex-direction:column; gap:7px; }
+  .acct-row { display:flex; justify-content:space-between; }
+  .acct-row .k { font-size:11px; color:var(--muted); }
+  .acct-row .v { font-size:13px; font-weight:500; font-family:var(--mono); }
+
+  /* CONTENT */
+  .content { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  .results-area { flex:1; overflow-y:auto; padding:14px 18px; }
+  .status-bar { font-size:12px; color:var(--muted); margin-bottom:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .status-bar .pass-count { color:var(--green); font-weight:600; }
+  .loading-msg { color:var(--blue); display:flex; align-items:center; gap:6px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .spinner { width:12px; height:12px; border:2px solid var(--border2); border-top-color:var(--blue); border-radius:50%; animation:spin .6s linear infinite; flex-shrink:0; }
+
+  /* TABLE */
+  .results-table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .results-table th {
+    padding:7px 10px; text-align:left; font-size:10.5px; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.06em; font-weight:500;
+    border-bottom:1px solid var(--border); position:sticky; top:0;
+    background:var(--surface); z-index:1; white-space:nowrap;
+    cursor:pointer; user-select:none;
+  }
+  .results-table th:hover { color:var(--text); }
+  .sort-arrow { margin-left:4px; opacity:.4; font-size:10px; }
+  .sort-arrow.active { opacity:1; color:var(--blue); }
+  .results-table td { padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+  .results-table tr.dim td { opacity:.3; }
+  .results-table tr.dim.filtered-reason td { opacity:.4; }
+  .results-table tr:not(.dim):hover td { background:var(--surface2); }
+  .dot { width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:5px; flex-shrink:0; }
+  .dot-g { background:var(--green); } .dot-r { background:var(--red); } .dot-gr { background:var(--border2); }
+  .sym-cell { font-weight:600; font-family:var(--mono); white-space:nowrap; }
+  .price-cell { font-family:var(--mono); }
+  .range-wrap { display:flex; align-items:center; gap:5px; min-width:80px; }
+  .range-bar { flex:1; height:3px; background:var(--border); border-radius:2px; min-width:40px; }
+  .range-fill { height:100%; border-radius:2px; }
+  .range-low { background:var(--green); } .range-mid { background:var(--amber); } .range-high { background:var(--red); }
+  .range-pct { font-size:11px; color:var(--muted); min-width:26px; text-align:right; font-family:var(--mono); }
+  .iv-ok  { color:var(--green); font-family:var(--mono); }
+  .iv-mid { color:var(--amber); font-family:var(--mono); }
+  .iv-low { color:var(--red);   font-family:var(--mono); }
+  .iv-lo  { color:var(--muted); font-family:var(--mono); }
+  .earn-warn    { color:var(--amber);  font-size:11.5px; white-space:nowrap; }
+  .earn-ok      { color:var(--muted);  font-size:11.5px; white-space:nowrap; }
+  .earn-pending { color:var(--border2); font-size:11.5px; white-space:nowrap; font-style:italic; }
+  .mono { font-family:var(--mono); color:var(--muted); font-size:12px; }
+  .thesis-cell { color:var(--muted); line-height:1.5; }
+  .warn-flag { color:var(--amber); margin-right:4px; font-size:11px; }
+  .filter-reason { font-size:11px; color:var(--red); opacity:.7; font-style:italic; }
+
+  .empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:60px 20px; color:var(--muted); gap:8px; text-align:center; }
+  .empty-state svg { opacity:.25; margin-bottom:8px; }
+
+  .legend { padding:8px 18px; border-top:1px solid var(--border); font-size:11px; color:var(--muted); display:flex; gap:14px; align-items:center; flex-shrink:0; background:var(--surface); flex-wrap:wrap; }
+  .li { display:flex; align-items:center; gap:5px; }
+
+  /* TABS */
+  .tab-bar { display:flex; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; }
+  .tab-btn { padding:10px 20px; font-size:13px; font-weight:500; color:var(--muted); cursor:pointer; border:none; background:transparent; border-bottom:2px solid transparent; transition:color .15s; }
+  .tab-btn:hover { color:var(--text); }
+  .tab-btn.active { color:var(--text); border-bottom-color:var(--blue); }
+  .tab-pane { display:none; flex:1; overflow:hidden; flex-direction:column; }
+  .tab-pane.active { display:flex; }
+
+  /* SQUEEZE */
+  .sq-score-bar { display:flex; gap:3px; }
+  .sq-score-pip { width:8px; height:8px; border-radius:2px; background:var(--border2); }
+  .sq-score-pip.filled { background:var(--amber); }
+  .sq-score-pip.high { background:var(--green); }
+
+  /* WARNING BADGES */
+  .warn-badge {
+    display:inline-flex; align-items:center; gap:3px;
+    background:rgba(245,166,35,.15); border:1px solid rgba(245,166,35,.35);
+    color:var(--amber); border-radius:4px; padding:1px 5px;
+    font-size:10px; font-weight:600; cursor:help; white-space:nowrap;
+    position:relative; margin-left:5px;
+  }
+  .warn-badge:hover .warn-tooltip {
+    display:block;
+  }
+  .warn-tooltip {
+    display:none; position:absolute; bottom:calc(100% + 5px); left:0;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:7px; padding:8px 10px; min-width:200px; max-width:280px;
+    font-size:11px; color:var(--text); line-height:1.6; z-index:50;
+    box-shadow:0 4px 16px rgba(0,0,0,.4); font-weight:400;
+  }
+  .warn-tooltip ul { list-style:none; padding:0; margin:0; }
+  .warn-tooltip li::before { content:"⚠ "; color:var(--amber); }
+
+  ::-webkit-scrollbar { width:6px; height:6px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+
+  /* BP TRACKER */
+  .bp-tracker { background:var(--surface); border-bottom:1px solid var(--border); padding:8px 20px; display:flex; align-items:center; gap:16px; flex-shrink:0; flex-wrap:wrap; }
+  .bp-tracker-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
+  .bp-bar-wrap { flex:1; min-width:200px; max-width:400px; }
+  .bp-bar-bg { height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+  .bp-bar-fill { height:100%; border-radius:3px; transition:width .3s, background .3s; }
+  .bp-numbers { font-size:12px; font-family:var(--mono); color:var(--text); white-space:nowrap; }
+  .bp-reset { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:5px; padding:3px 8px; font-size:11px; cursor:pointer; }
+  .bp-reset:hover { color:var(--text); }
+  .bp-row { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .bp-tag { background:var(--surface2); border:1px solid var(--border); border-radius:4px; padding:2px 7px; font-family:var(--mono); font-size:11px; display:flex; align-items:center; gap:4px; }
+  .bp-tag button { background:none; border:none; color:var(--muted); cursor:pointer; font-size:11px; padding:0 2px; line-height:1; }
+  .bp-tag button:hover { color:var(--red); }
+
+  /* VIX ALERT */
+  .vix-alert { background:rgba(62,207,142,.08); border-bottom:1px solid rgba(62,207,142,.25); padding:7px 20px; font-size:13px; color:var(--green); display:none; align-items:center; gap:8px; flex-shrink:0; }
+
+  /* RESEARCH PANEL */
+  .research-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:100; align-items:center; justify-content:center; }
+  .research-panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; width:520px; max-width:90vw; max-height:80vh; overflow-y:auto; padding:24px 28px; display:flex; flex-direction:column; gap:16px; }
+  .rp-header { display:flex; align-items:center; gap:10px; }
+  .rp-sym { font-size:20px; font-weight:700; font-family:var(--mono); }
+  .rp-signal { border-radius:6px; padding:3px 10px; font-size:12px; font-weight:600; border:1px solid; }
+  .rp-signal.bullish { background:rgba(62,207,142,.12); color:var(--green); border-color:rgba(62,207,142,.3); }
+  .rp-signal.bearish { background:rgba(224,82,82,.12); color:var(--red); border-color:rgba(224,82,82,.3); }
+  .rp-signal.caution { background:rgba(245,166,35,.12); color:var(--amber); border-color:rgba(245,166,35,.3); }
+  .rp-signal.neutral { background:var(--surface2); color:var(--muted); border-color:var(--border); }
+  .rp-close { margin-left:auto; background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:6px; padding:3px 10px; font-size:12px; cursor:pointer; }
+  .rp-close:hover { color:var(--text); }
+  .rp-summary { font-size:13px; color:var(--text); line-height:1.6; }
+  .rp-section { display:flex; flex-direction:column; gap:6px; }
+  .rp-section h4 { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.07em; }
+  .rp-list { list-style:none; display:flex; flex-direction:column; gap:4px; }
+  .rp-list li { font-size:13px; color:var(--muted); padding-left:14px; position:relative; line-height:1.5; }
+  .rp-list li::before { content:"·"; position:absolute; left:0; }
+  .rp-list.pos li::before { color:var(--green); }
+  .rp-list.neg li::before { color:var(--red); }
+  .rp-take { background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:13px; color:var(--text); line-height:1.5; }
+  .rp-loading { text-align:center; padding:40px; color:var(--muted); font-size:14px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <h1>Put Screener</h1>
+  <div class="login-card">
+    <div id="step-creds" style="display:flex;flex-direction:column;gap:14px;">
+      <div style="font-size:13px;color:var(--muted);text-align:center;">Sign in with tastytrade</div>
+      <input type="text"     id="un" placeholder="Username or email" autocomplete="username" />
+      <input type="password" id="pw" placeholder="Password" autocomplete="current-password" />
+      <div id="login-error" style="color:var(--red);font-size:13px;text-align:center;min-height:18px;"></div>
+      <button class="btn-primary" onclick="doLogin()">Sign in</button>
+      <button class="btn-skip"    onclick="skipLogin()">Skip — run without account data</button>
+    </div>
+    <div id="step-totp" style="display:none;flex-direction:column;gap:14px;">
+      <div style="font-size:13px;color:var(--text);text-align:center;font-weight:500;">Google Authenticator</div>
+      <div style="font-size:12px;color:var(--muted);text-align:center;">Open Google Authenticator and enter your current 6-digit code for tastytrade</div>
+      <input type="text" id="totp-input" placeholder="000000" maxlength="8" autocomplete="one-time-code"
+             style="text-align:center;font-size:24px;letter-spacing:10px;font-family:var(--mono);background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:12px;width:100%;outline:none;" />
+      <div id="totp-error" style="color:var(--red);font-size:13px;text-align:center;min-height:18px;"></div>
+      <button class="btn-primary" onclick="doTotp()">Verify</button>
+      <button class="btn-skip" onclick="backToCreds()">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main-screen">
+  <div class="topbar">
+    <h1>Put Screener</h1>
+    <div class="chip"><span class="lbl">SPY</span><span class="val" id="c-spy">—</span></div>
+    <div class="chip"><span class="lbl">From ATH</span><span class="val" id="c-ath">—</span></div>
+    <div class="chip"><span class="lbl">VIX</span><span class="val" id="c-vix">—</span></div>
+    <div class="chip" id="market-chip" style="display:none;">
+      <span class="lbl">Market</span><span class="val" id="c-market">—</span>
+    </div>
+    <div class="rec-badge secondary" id="rec-badge">Loading…</div>
+    <button class="logout-btn" onclick="doLogout()">Sign out</button>
+  </div>
+  <div class="hedge-alert" id="hedge-alert">⚠ Market near ATH — IWM long put hedge recommended before increasing deployment</div>
+  <div class="vix-alert" id="vix-alert">⚡ VIX above 25 — elevated volatility may signal put selling opportunity</div>
+  <div class="bp-tracker" id="bp-tracker" style="display:none;">
+    <span class="bp-tracker-label">BP Planner</span>
+    <div class="bp-bar-wrap">
+      <div class="bp-bar-bg"><div class="bp-bar-fill" id="bp-bar-fill" style="width:0%;background:var(--green);"></div></div>
+    </div>
+    <span class="bp-numbers" id="bp-numbers">$0 / $0 — 0%</span>
+    <div id="bp-tags" style="display:flex;gap:5px;flex-wrap:wrap;"></div>
+    <button class="bp-reset" onclick="bpReset()">Reset</button>
+  </div>
+  <div class="positions-bar" id="pos-bar"></div>
+
+  <!-- TAB BAR -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('screener')">Put Screener</button>
+    <button class="tab-btn" onclick="switchTab('squeeze')" id="squeeze-tab-btn">Squeeze Watch</button>
+  </div>
+
+  <div class="app-body">
+    <div class="sidebar">
+      <div>
+        <h3>Sectors</h3>
+        <div class="sel-btns">
+          <button onclick="selAll(true)">All</button>
+          <button onclick="selAll(false)">None</button>
+        </div>
+        <div class="sector-list" id="sector-list"></div>
+      </div>
+      <div id="watchlist-section" style="display:none;flex-direction:column;gap:6px;">
+        <h3>Watchlists</h3>
+        <select id="watchlist-select" style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12px;width:100%;outline:none;cursor:pointer;"
+                onchange="applyWatchlistFilter()">
+          <option value="">— Select watchlist —</option>
+        </select>
+      </div>
+      <div class="custom-box">
+        <h3>Custom tickers</h3>
+        <textarea id="custom-input" placeholder="UBER, SNAP, …"></textarea>
+      </div>
+      <button class="run-btn" id="run-btn" onclick="runScreen()">Run screen</button>
+      <div class="acct-box" id="acct-box" style="display:none;">
+        <h3>Account</h3>
+        <div class="acct-row"><span class="k">NLV</span><span class="v" id="a-nlv">—</span></div>
+        <div class="acct-row"><span class="k">Deriv BP</span><span class="v" id="a-bp">—</span></div>
+        <div class="acct-row"><span class="k">Deployed</span><span class="v" id="a-dep">—</span></div>
+      </div>
+    </div>
+
+    <!-- SCREENER TAB -->
+    <div class="tab-pane active" id="pane-screener">
+    <div class="content">
+      <div class="results-area">
+        <div class="status-bar" id="status-bar"></div>
+        <div id="results-container">
+          <div class="empty-state">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            <p>Select sectors and run screen</p>
+            <small>Finds stocks near 52wk lows with elevated IV · 0.35Δ put strike · earnings dates</small>
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="li"><span class="dot dot-g"></span>Passes all filters</div>
+        <div class="li"><span class="dot dot-r"></span>Squeezed / excluded</div>
+        <div class="li"><span class="dot dot-gr"></span>Filtered out — reason shown</div>
+        <div style="margin-left:auto;">Target expiry: <strong id="legend-expiry">Jul 17 2026</strong> · IVx = per-expiry IV · BP = 20% × 0.35Δ strike × 100 × 1.15</div>
+      </div>
+    </div>
+    </div><!-- end pane-screener -->
+
+    <!-- SQUEEZE WATCH TAB -->
+    <div class="tab-pane" id="pane-squeeze">
+      <div class="content">
+        <div class="results-area">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+            <div style="flex:1;">
+              <div style="font-size:13px;color:var(--text);font-weight:500;margin-bottom:3px;">Squeeze Watch</div>
+              <div style="font-size:12px;color:var(--muted);" id="sq-meta">Loading watch list…</div>
+            </div>
+            <button style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;" onclick="sqRefreshLive()">↻ Refresh live data</button>
+            <button style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px 12px;font-size:12px;cursor:pointer;" onclick="showRedditConfig()" id="sq-reddit-btn">Reddit credentials (optional)</button>
+          </div>
+          <!-- Reddit config panel -->
+          <div id="sq-reddit-config" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:12px;flex-direction:column;gap:8px;">
+            <div style="font-size:12px;color:var(--text);font-weight:500;">Reddit API credentials</div>
+            <div style="font-size:11px;color:var(--muted);">Create a free app at <a href="https://www.reddit.com/prefs/apps" target="_blank" style="color:var(--blue);">reddit.com/prefs/apps</a> — choose "script" type, any redirect URI.</div>
+            <input type="text" id="sq-reddit-id" placeholder="Client ID" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:12px;outline:none;" />
+            <input type="password" id="sq-reddit-secret" placeholder="Client Secret" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:12px;outline:none;" />
+            <div style="display:flex;gap:8px;">
+              <button onclick="saveRedditConfig()" style="background:var(--blue);color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;">Save & Enable</button>
+              <button onclick="document.getElementById('sq-reddit-config').style.display='none'" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;">Cancel</button>
+            </div>
+            <div id="sq-reddit-msg" style="font-size:12px;min-height:16px;"></div>
+          </div>
+          <div class="status-bar" id="sq-status"></div>
+          <div id="sq-results">
+            <div class="empty-state">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              <p>Run screen to find squeeze candidates</p>
+              <small>Best used during market hours when volume data is live</small>
+            </div>
+          </div>
+        </div>
+        <div class="legend">
+          <div class="li"><span style="color:var(--green);font-weight:600;">●</span> Score 4+ — strong signals</div>
+          <div class="li"><span style="color:var(--amber);font-weight:600;">●</span> Score 2-3.9 — moderate signals</div>
+          <div style="margin-left:auto;font-size:11px;color:var(--muted);">Score combines: short float · days to cover · volume ratio · borrow rate · price action</div>
+        </div>
+      </div>
+    </div><!-- end pane-squeeze -->
+
+  </div>
+</div>
+
+<script>
+const UNIVERSE = {{ universe | tojson }};
+
+// All results from last screen run (for live sector filtering)
+let allResults = [];
+let targetExpiry = "Jul 17 2026";
+
+// Sort state
+let sortCol = null;   // 'symbol','price','rangePct','ivExpiry','ivRank'
+let sortDir = 1;      // 1 = asc, -1 = desc
+
+// Build sector checkboxes
+const sectorList = document.getElementById("sector-list");
+Object.keys(UNIVERSE).forEach(sec => {
+  const el = document.createElement("div");
+  el.className = "sector-item";
+  el.innerHTML = `<input type="checkbox" id="s-${sec}" checked onchange="applyFilters()" /><label for="s-${sec}">${sec}</label>`;
+  sectorList.appendChild(el);
+});
+
+function selAll(v) {
+  document.querySelectorAll(".sector-list input").forEach(cb => { cb.checked = v; });
+  applyFilters();
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+async function doLogin() {
+  const u = document.getElementById("un").value.trim();
+  const p = document.getElementById("pw").value;
+  document.getElementById("login-error").textContent = "Signing in…";
+  try {
+    const r = await fetch("/api/login", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({username:u, password:p})
+    });
+    const d = await r.json();
+    if (d.ok) { showMain(); return; }
+    if (d.challenge_required) {
+      document.getElementById("step-creds").style.display = "none";
+      document.getElementById("step-totp").style.display = "flex";
+      setTimeout(() => document.getElementById("totp-input").focus(), 50);
+      return;
+    }
+    document.getElementById("login-error").textContent = d.error || "Login failed";
+  } catch(e) {
+    document.getElementById("login-error").textContent = "Connection error";
+  }
+}
+
+async function doTotp() {
+  const totp = document.getElementById("totp-input").value.trim();
+  document.getElementById("totp-error").textContent = "Verifying…";
+  try {
+    const r = await fetch("/api/login/totp", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({totp})
+    });
+    const d = await r.json();
+    if (d.ok) { showMain(); return; }
+    document.getElementById("totp-error").textContent = d.error || "Invalid code — try again";
+  } catch(e) {
+    document.getElementById("totp-error").textContent = "Connection error";
+  }
+}
+
+function backToCreds() {
+  document.getElementById("step-totp").style.display = "none";
+  document.getElementById("step-creds").style.display = "flex";
+  document.getElementById("totp-input").value = "";
+  document.getElementById("totp-error").textContent = "";
+}
+
+function skipLogin() { showMain(); }
+
+function showMain() {
+  document.getElementById("login-screen").style.display = "none";
+  const ms = document.getElementById("main-screen");
+  ms.style.display = "flex"; ms.style.flexDirection = "column";
+  loadPulse();
+}
+
+function doLogout() {
+  document.getElementById("main-screen").style.display = "none";
+  document.getElementById("login-screen").style.display = "flex";
+  document.getElementById("pw").value = "";
+  document.getElementById("totp-input").value = "";
+  document.getElementById("step-creds").style.display = "flex";
+  document.getElementById("step-totp").style.display = "none";
+  document.getElementById("login-error").textContent = "";
+}
+
+// ── Pulse ─────────────────────────────────────────────────────────────────────
+
+async function loadPulse() {
+  try {
+    const d = await fetch("/api/pulse").then(r => r.json());
+
+    const spyEl = document.getElementById("c-spy");
+    spyEl.textContent = d.spy != null
+      ? `$${d.spy.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`
+      : "—";
+
+    const athEl = document.getElementById("c-ath");
+    athEl.textContent = d.pct_from_ath != null ? `-${d.pct_from_ath.toFixed(1)}%` : "—";
+    athEl.className = "val" + (d.pct_from_ath == null ? "" : d.pct_from_ath <= 3 ? " r" : d.pct_from_ath <= 10 ? " a" : " g");
+
+    const vixEl = document.getElementById("c-vix");
+    vixEl.textContent = d.vix != null ? d.vix.toFixed(1) : "—";
+    vixEl.className = "val" + (d.vix == null ? "" : d.vix < 18 ? " r" : d.vix > 30 ? " g" : " a");
+
+    if (d.rec) {
+      const rb = document.getElementById("rec-badge");
+      rb.textContent = `${d.rec.label} · ${d.rec.pct}`;
+      rb.className = `rec-badge ${d.rec.level}`;
+      if (d.rec.hedge) document.getElementById("hedge-alert").style.display = "flex";
+    }
+    checkVixAlert(d.vix);
+
+    // Market session status
+    if (d.market && d.market.state) {
+      const chip = document.getElementById("market-chip");
+      const val  = document.getElementById("c-market");
+      const state = d.market.state;
+      chip.style.display = "flex";
+      val.textContent = state === "Open" ? "Open" : state === "Pre-Market" ? "Pre" : state === "After-Hours" ? "AH" : "Closed";
+      val.className = "val" + (state === "Open" ? " g" : state.includes("Market") ? " a" : " r");
+    }
+
+    // Watchlists — store for sidebar display after screen runs
+    if (d.watchlists && d.watchlists.length) {
+      window._watchlists = d.watchlists;
+      // Pre-populate watchlist sector checkboxes in sidebar
+      const sectorList = document.getElementById("sector-list");
+      d.watchlists.forEach(wl => {
+        const secName = `Watchlist: ${wl.name}`;
+        if (!document.getElementById(`s-${secName}`)) {
+          const el = document.createElement("div");
+          el.className = "sector-item";
+          el.innerHTML = `<input type="checkbox" id="s-${secName}" checked onchange="applyFilters()" />
+            <label for="s-${secName}" style="color:var(--blue);">${wl.name} <span style="color:var(--muted);font-size:10px;">(watchlist)</span></label>`;
+          sectorList.appendChild(el);
+        }
+      });
+      // Hide watchlist dropdown section since they're now in the sector list
+      document.getElementById("watchlist-section").style.display = "none";
+    }
+
+    if (d.nlv > 0) {
+      document.getElementById("acct-box").style.display = "flex";
+      document.getElementById("a-nlv").textContent = `$${d.nlv.toLocaleString("en-US",{maximumFractionDigits:0})}`;
+      document.getElementById("a-bp").textContent  = `$${d.deriv_bp.toLocaleString("en-US",{maximumFractionDigits:0})}`;
+      document.getElementById("a-dep").textContent = `${d.deployed_pct}%`;
+      bpInit(d.deriv_bp, d.deployed_pct);
+    }
+
+    if (d.positions && d.positions.length) {
+      const bar = document.getElementById("pos-bar");
+      bar.style.display = "flex";
+      bar.innerHTML = d.positions.map(p =>
+        `<div class="pos-item"><div class="pos-sym">${p.symbol}</div><div class="pos-desc">${p.desc}</div></div>`
+      ).join("");
+    }
+  } catch(e) { console.error("pulse", e); }
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
+
+async function runScreen() {
+  // Get currently checked sectors + custom
+  const sectors = [...document.querySelectorAll(".sector-list input")]
+    .filter(cb => cb.checked).map(cb => cb.id.replace("s-",""));
+  const custom = document.getElementById("custom-input").value;
+
+  const btn = document.getElementById("run-btn");
+  btn.disabled = true; btn.textContent = "Scanning…";
+  document.getElementById("status-bar").innerHTML =
+    `<div class="loading-msg"><div class="spinner"></div>Scanning — may take 1-3 minutes…</div>`;
+  document.getElementById("results-container").innerHTML = "";
+
+  try {
+    const resp = await fetch("/api/screen", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({sectors: Object.keys(UNIVERSE), custom}) // always fetch all, filter client-side
+    });
+    const data = await resp.json();
+    allResults  = data.results || [];
+    targetExpiry = data.target_expiry || "Jul 17 2026";
+    document.getElementById("legend-expiry").textContent = targetExpiry;
+    sortCol = null; sortDir = 1;
+    applyFilters();
+    // Async: fetch warning badges for passing tickers
+    const passingSym = (allResults || []).filter(r => r.passes).map(r => r.symbol);
+    if (passingSym.length > 0) fetchWarnings(passingSym);
+  } catch(e) {
+    document.getElementById("status-bar").innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  } finally {
+    btn.disabled = false; btn.textContent = "Run screen";
+  }
+}
+
+// ── Client-side filter + sort (fixes 3 and 7) ────────────────────────────────
+
+function getActiveSectors() {
+  return new Set([...document.querySelectorAll(".sector-list input")]
+    .filter(cb => cb.checked).map(cb => cb.id.replace("s-","")));
+}
+
+function getCustomTickers() {
+  return new Set(document.getElementById("custom-input").value
+    .split(",").map(t => t.trim().toUpperCase()).filter(Boolean));
+}
+
+function applyFilters() {
+  if (!allResults.length) return;
+  const activeSectors = getActiveSectors();
+  const customTickers = getCustomTickers();
+
+  // Filter by sector
+  let visible = allResults.filter(r => {
+    return activeSectors.has(r.sector) || customTickers.has(r.symbol) || r.sector === "Custom";
+  });
+
+  // Sort within passing / failing groups separately
+  if (sortCol) {
+    const sortFn = (a, b) => {
+      let av = a[sortCol], bv = b[sortCol];
+      if (av == null) av = sortDir > 0 ? Infinity : -Infinity;
+      if (bv == null) bv = sortDir > 0 ? Infinity : -Infinity;
+      if (typeof av === "string") return sortDir * av.localeCompare(bv);
+      return sortDir * (av - bv);
+    };
+    const passing = visible.filter(r => r.passes).sort(sortFn);
+    const failing = visible.filter(r => !r.passes).sort(sortFn);
+    visible = [...passing, ...failing];
+  }
+
+  renderResults(visible);
+}
+
+// ── Sort headers (fix 3) ──────────────────────────────────────────────────────
+
+function setSort(col) {
+  if (sortCol === col) { sortDir *= -1; }
+  else { sortCol = col; sortDir = 1; }
+  // Update arrow UI
+  document.querySelectorAll(".sort-arrow").forEach(el => {
+    el.classList.remove("active");
+    el.textContent = "↕";
+  });
+  const arrow = document.getElementById(`arrow-${col}`);
+  if (arrow) { arrow.classList.add("active"); arrow.textContent = sortDir > 0 ? "↑" : "↓"; }
+  applyFilters();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function renderResults(results) {
+  if (!results || !results.length) {
+    document.getElementById("status-bar").innerHTML = "No results for selected sectors";
+    document.getElementById("results-container").innerHTML = "";
+    return;
+  }
+  const passing = results.filter(r => r.passes);
+  document.getElementById("status-bar").innerHTML =
+    `<span class="pass-count">${passing.length} passing</span>&nbsp;of ${results.length} shown &nbsp;·&nbsp; Target: <strong>${targetExpiry}</strong>`;
+
+  const rows = results.map(r => {
+    if (!r.price) return `<tr class="dim"><td colspan="10" class="mono" style="color:var(--muted);font-size:12px;">${r.symbol} — ${r.thesis || "no data"}</td></tr>`;
+
+    const dotCls  = r.squeezed ? "dot-r" : r.passes ? "dot-g" : "dot-gr";
+    const rp      = r.rangePct ?? 50;
+    const fillCls = rp <= 30 ? "range-low" : rp <= 55 ? "range-mid" : "range-high";
+    const dimCls  = r.passes ? "" : "dim";
+    const clickAttr = r.passes ? `onclick="openResearch('${r.symbol}')" style="cursor:pointer;" title="Click to research ${r.symbol}"` : "";
+
+    // IVx display: green ≥35, amber 25-34, red <25
+    let ivExpDisplay = "—", ivExpCls = "iv-lo";
+    let ivRankDisplay = "—";
+    if (r.ivExpiry != null) {
+      ivExpDisplay = `${r.ivExpiry}%`;
+      ivExpCls = r.ivExpiry >= 35 ? "iv-ok" : r.ivExpiry >= 25 ? "iv-mid" : "iv-low";
+    }
+    if (r.ivRank != null) {
+      ivRankDisplay = `${r.ivRank}`;
+    }
+
+    // Earnings
+    const earnCls = r.earningsWarn ? "earn-warn" : r.earnings === 'Pending' ? "earn-pending" : "earn-ok";
+    const earnIcon = r.earningsWarn ? "⚠ " : "";
+
+    // Strike / BP
+    const strike35 = r.strike35 != null ? `$${r.strike35.toFixed(2)}` : "—";
+    const bpStr    = r.bp != null ? `$${r.bp.toLocaleString()}` : "—";
+
+    // Filter reason row (fix 8)
+    const reasonHtml = (!r.passes && r.filterReasons && r.filterReasons.length)
+      ? `<span class="filter-reason">${r.filterReasons.join(" · ")}</span>`
+      : "";
+
+    return `<tr class="${dimCls}" ${clickAttr} data-sym="${r.symbol}">
+      <td class="sym-cell">
+        <span class="dot ${dotCls}"></span>${r.symbol}
+        ${r.passes ? `<span class="warn-badge" id="wb-${r.symbol}" style="display:none;">! <span class="warn-tooltip"><ul id="wt-${r.symbol}"></ul></span></span>` : ""}
+        ${r.company_name ? `<div style="font-size:10px;color:var(--muted);font-weight:400;font-family:var(--sans);margin-top:1px;">${r.company_name}</div>` : ""}
+      </td>
+      <td class="price-cell">$${(r.price||0).toFixed(2)}</td>
+      <td>
+        <div class="range-wrap">
+          <div class="range-bar"><div class="range-fill ${fillCls}" style="width:${rp}%"></div></div>
+          <span class="range-pct">${rp}%</span>
+        </div>
+      </td>
+      <td class="${ivExpCls}">${ivExpDisplay}</td>
+      <td class="iv-lo">${ivRankDisplay}</td>
+      <td class="${earnCls}">${earnIcon}${r.earnings}</td>
+      <td class="mono">${strike35}</td>
+      <td class="mono">${bpStr}${r.bp_source==="tastytrade" ? '<span title="Real tastytrade margin" style="color:var(--green);font-size:9px;margin-left:3px;">✓</span>' : ''}</td>
+      <td class="mono">${r.expiry || "—"}</td>
+      <td class="thesis-cell">${r.flag ? `<span class="warn-flag">⚠ ${r.flag} ·</span>` : ""}${r.thesis}${reasonHtml ? "<br>" + reasonHtml : ""}</td>
+      ${r.passes && r.bp ? `<td><button onclick="event.stopPropagation();bpAdd('${r.symbol}',${r.bp})" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:4px;padding:2px 7px;font-size:11px;cursor:pointer;" title="Add to BP planner">+ BP</button></td>` : "<td></td>"}
+    </tr>`;
+  }).join("");
+
+  document.getElementById("results-container").innerHTML = `
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th onclick="setSort('symbol')">Ticker <span class="sort-arrow" id="arrow-symbol">↕</span></th>
+          <th onclick="setSort('price')">Price <span class="sort-arrow" id="arrow-price">↕</span></th>
+          <th onclick="setSort('rangePct')" style="min-width:90px">52wk Pos <span class="sort-arrow" id="arrow-rangePct">↕</span></th>
+          <th onclick="setSort('ivExpiry')">IVx <span class="sort-arrow" id="arrow-ivExpiry">↕</span></th>
+          <th onclick="setSort('ivRank')">IV Rank <span class="sort-arrow" id="arrow-ivRank">↕</span></th>
+          <th>Earnings</th>
+          <th>0.35Δ Strike</th>
+          <th>BP <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:.6;" id="bp-source-label">(est)</span></th>
+          <th>Expiry</th>
+          <th>Thesis / flag</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  // Restore active sort arrow if any
+  if (sortCol) {
+    const arrow = document.getElementById(`arrow-${sortCol}`);
+    if (arrow) { arrow.classList.add("active"); arrow.textContent = sortDir > 0 ? "↑" : "↓"; }
+  }
+  // Reapply cached warning badges after every re-render
+  setTimeout(applyWarningBadges, 0);
+}
+
+document.getElementById("pw").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("pane-" + name).classList.add("active");
+  event.target.classList.add("active");
+  if (name === "squeeze") loadSqueezeState();
+}
+
+// ── Squeeze Watch ─────────────────────────────────────────────────────────────
+
+async function loadSqueezeState() {
+  document.getElementById("sq-status").innerHTML =
+    `<div class="loading-msg"><div class="spinner"></div>Loading squeeze watch list…</div>`;
+  try {
+    const r = await fetch("/api/squeeze/state");
+    const d = await r.json();
+
+    // Update meta line
+    const parts = [];
+    if (d.short_updated) parts.push(`Short interest: ${d.short_count} high-short tickers · updated ${d.short_updated}`);
+    if (d.reddit_enabled && d.reddit_updated) parts.push(`Reddit: ${d.reddit_count} tickers · updated ${d.reddit_updated}`);
+    else if (!d.reddit_enabled) parts.push(`Reddit: not configured`);
+    document.getElementById("sq-meta").textContent = parts.join("  ·  ") || "Initializing…";
+
+    renderSqueeze(d.on_watch || []);
+  } catch(e) {
+    document.getElementById("sq-status").innerHTML =
+      `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  }
+}
+
+async function sqRefreshLive() {
+  document.getElementById("sq-status").innerHTML =
+    `<div class="loading-msg"><div class="spinner"></div>Refreshing live price & volume data…</div>`;
+  try {
+    await fetch("/api/squeeze/refresh-live", {method:"POST"});
+    await loadSqueezeState();
+  } catch(e) {
+    document.getElementById("sq-status").innerHTML =
+      `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  }
+}
+
+function showRedditConfig() {
+  const el = document.getElementById("sq-reddit-config");
+  el.style.display = el.style.display === "none" ? "flex" : "none";
+}
+
+async function saveRedditConfig() {
+  const id  = document.getElementById("sq-reddit-id").value.trim();
+  const sec = document.getElementById("sq-reddit-secret").value.trim();
+  const msg = document.getElementById("sq-reddit-msg");
+  msg.textContent = "Saving…";
+  try {
+    const r = await fetch("/api/squeeze/configure-reddit", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({client_id:id, client_secret:sec})
+    });
+    const d = await r.json();
+    msg.style.color = d.ok ? "var(--green)" : "var(--red)";
+    msg.textContent = d.ok ? "✓ Reddit enabled — scanning on next cycle" : d.error;
+    if (d.ok) setTimeout(() => document.getElementById("sq-reddit-config").style.display="none", 2000);
+  } catch(e) {
+    msg.textContent = "Error: " + e.message;
+  }
+}
+
+function renderSqueeze(results) {
+  if (!results || !results.length) {
+    document.getElementById("sq-status").innerHTML = "No squeeze candidates found — short interest data still loading or no tickers above threshold";
+    document.getElementById("sq-results").innerHTML = "";
+    return;
+  }
+  document.getElementById("sq-status").innerHTML =
+    `<span class="pass-count">${results.length}</span> candidates ranked by squeeze score`;
+
+  const rows = results.map(r => {
+    if (!r || !r.symbol) return "";
+    // Use live_score if available, fall back to base_score, then score
+    const score      = r.live_score || r.base_score || r.score || 0;
+    const scoreColor = score >= 4 ? "var(--green)" : score >= 2 ? "var(--amber)" : "var(--muted)";
+    const pips = Array.from({length:5}, (_,i) =>
+      `<div class="sq-score-pip ${i < Math.floor(score) ? (score >= 4 ? "high" : "filled") : ""}"></div>`
+    ).join("");
+    const chg        = r.change_pct || 0;
+    const changeColor = chg > 0 ? "var(--green)" : chg < 0 ? "var(--red)" : "var(--muted)";
+    const volRatio   = r.vol_ratio || 0;
+    const borrowRate = r.borrow_rate || 0;
+    const reddit     = r.reddit || 0;
+    const price      = r.price || 0;
+    const shortPct   = r.short_pct || 0;
+    const daysCover  = r.days_cover || 0;
+
+    // Build signal tags from data
+    const signals = [];
+    if (shortPct >= 15) signals.push(`Short ${shortPct}%`);
+    if (daysCover >= 3) signals.push(`${daysCover}d to cover`);
+    if (volRatio >= 1.5) signals.push(`${volRatio}x vol`);
+    if (borrowRate >= 5) signals.push(`Borrow ${borrowRate}%`);
+    if (reddit >= 3) signals.push(`${reddit} Reddit mentions`);
+    if (chg >= 2) signals.push(`+${chg}% today`);
+    const signalHtml = signals.map(s =>
+      `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:11px;color:var(--muted);margin-right:4px;">${s}</span>`
+    ).join("");
+
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:9px 10px;font-weight:600;font-family:var(--mono);">${r.symbol}</td>
+      <td style="padding:9px 10px;font-family:var(--mono);">$${price > 0 ? price.toFixed(2) : "—"}</td>
+      <td style="padding:9px 10px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="sq-score-bar">${pips}</div>
+          <span style="font-family:var(--mono);color:${scoreColor};font-weight:600;">${score.toFixed(1)}</span>
+        </div>
+      </td>
+      <td style="padding:9px 10px;font-family:var(--mono);color:var(--text);">${shortPct > 0 ? shortPct + "%" : "—"}</td>
+      <td style="padding:9px 10px;font-family:var(--mono);color:var(--muted);">${daysCover > 0 ? daysCover + "d" : "—"}</td>
+      <td style="padding:9px 10px;font-family:var(--mono);color:${volRatio >= 2 ? "var(--amber)" : "var(--muted)"};">${volRatio > 0 ? volRatio + "x" : "—"}</td>
+      <td style="padding:9px 10px;font-family:var(--mono);color:${borrowRate >= 20 ? "var(--red)" : "var(--muted)"};">${borrowRate > 0 ? borrowRate + "%" : "—"}</td>
+      <td style="padding:9px 10px;font-family:var(--mono);color:${changeColor};">${chg !== 0 ? (chg > 0 ? "+" : "") + chg + "%" : "—"}</td>
+      <td style="padding:9px 10px;font-size:12px;">${signalHtml}</td>
+    </tr>`;
+  }).filter(Boolean).join("");
+
+  document.getElementById("sq-results").innerHTML = `
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Ticker</th><th>Price</th><th>Score</th>
+          <th>Short %</th><th>Days Cover</th><th>Vol Ratio</th>
+          <th>Borrow Rate</th><th>Today</th><th>Signals</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Warning badges ────────────────────────────────────────────────────────────
+
+async function fetchWarnings(symbols) {
+  try {
+    const r = await fetch("/api/research/warnings", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({symbols})
+    });
+    const data = await r.json();
+    for (const [sym, warnings] of Object.entries(data)) {
+      if (warnings && warnings.length > 0) warningCache[sym] = warnings;
+    }
+    applyWarningBadges();
+  } catch(e) {
+    console.error("Warning fetch error:", e);
+  }
+}
+
+function applyWarningBadges() {
+  for (const [sym, warnings] of Object.entries(warningCache)) {
+    const badge = document.getElementById("wb-" + sym);
+    const list  = document.getElementById("wt-" + sym);
+    if (badge && list) {
+      list.innerHTML = warnings.map(w => "<li>" + w + "</li>").join("");
+      badge.style.display = "inline-flex";
+    }
+  }
+}
+
+// ── Watchlist filter ─────────────────────────────────────────────────────────
+
+function applyWatchlistFilter() {
+  const sel = document.getElementById("watchlist-select");
+  const idx = sel.value;
+  if (idx === "" || !window._watchlists) return;
+  const wl = window._watchlists[parseInt(idx)];
+  if (!wl) return;
+  // Set custom input to the watchlist symbols
+  document.getElementById("custom-input").value = wl.symbols.join(", ");
+  // Uncheck all sectors since we want just watchlist symbols
+  document.querySelectorAll(".sector-list input").forEach(cb => cb.checked = false);
+  applyFilters();
+}
+
+// ── BP Planner ────────────────────────────────────────────────────────────────
+
+let bpPlanned = [];   // [{symbol, bp}]
+let warningCache = {}; // persists across re-renders
+let totalDerivBP = 0; // pulled from pulse
+let currentDeployedBP = 0; // already deployed from account
+
+function bpInit(derivBP, deployedPct) {
+  totalDerivBP = derivBP;
+  currentDeployedBP = derivBP * (deployedPct / 100);
+}
+
+function bpAdd(symbol, bp) {
+  if (bpPlanned.find(x => x.symbol === symbol)) return; // already added
+  bpPlanned.push({symbol, bp});
+  bpRender();
+  document.getElementById("bp-tracker").style.display = "flex";
+}
+
+function bpRemove(symbol) {
+  bpPlanned = bpPlanned.filter(x => x.symbol !== symbol);
+  bpRender();
+  if (bpPlanned.length === 0) document.getElementById("bp-tracker").style.display = "none";
+}
+
+function bpReset() {
+  bpPlanned = [];
+  document.getElementById("bp-tracker").style.display = "none";
+  bpRender();
+}
+
+function bpRender() {
+  const plannedTotal = bpPlanned.reduce((s, x) => s + x.bp, 0);
+  const totalUsed    = currentDeployedBP + plannedTotal;
+  const pct          = totalDerivBP > 0 ? (totalUsed / totalDerivBP * 100) : 0;
+  const remaining    = totalDerivBP - totalUsed;
+
+  // Bar color
+  const barColor = pct >= 40 ? "var(--red)" : pct >= 30 ? "var(--amber)" : "var(--green)";
+  document.getElementById("bp-bar-fill").style.width  = `${Math.min(100, pct).toFixed(1)}%`;
+  document.getElementById("bp-bar-fill").style.background = barColor;
+
+  const fmt = n => `$${Math.round(n).toLocaleString()}`;
+  document.getElementById("bp-numbers").textContent =
+    `${fmt(totalUsed)} / ${fmt(totalDerivBP)} — ${pct.toFixed(1)}% deployed`;
+  document.getElementById("bp-numbers").style.color = barColor;
+
+  // Tags
+  document.getElementById("bp-tags").innerHTML = bpPlanned.map(x =>
+    `<div class="bp-tag">${x.symbol} <span style="color:var(--muted)">${fmt(x.bp)}</span>
+     <button onclick="bpRemove('${x.symbol}')" title="Remove">✕</button></div>`
+  ).join("");
+}
+
+// ── VIX Alert ────────────────────────────────────────────────────────────────
+
+function checkVixAlert(vix) {
+  const el = document.getElementById("vix-alert");
+  if (vix && vix > 25) {
+    el.style.display = "flex";
+    if (vix > 35) {
+      el.textContent = `🚨 VIX ${vix} — extreme volatility, consider aggressive put selling on quality names`;
+      el.style.background = "rgba(224,82,82,.08)";
+      el.style.borderBottomColor = "rgba(224,82,82,.25)";
+      el.style.color = "var(--red)";
+    } else {
+      el.textContent = `⚡ VIX ${vix} — elevated volatility, put selling opportunity may be developing`;
+    }
+  } else {
+    el.style.display = "none";
+  }
+}
+
+// ── Research panel ────────────────────────────────────────────────────────────
+
+async function openResearch(symbol) {
+  const overlay = document.getElementById("research-overlay");
+  overlay.style.display = "flex";
+  document.getElementById("rp-loading").style.display = "block";
+  document.getElementById("rp-content").style.display = "none";
+  document.getElementById("rp-sym").textContent = symbol;
+
+  try {
+    const r = await fetch(`/api/research/${symbol}`);
+    const resp = await r.json();
+    if (!resp.ok) throw new Error(resp.error);
+    const d = resp.data;
+
+    document.getElementById("rp-sym").textContent = symbol;
+    document.getElementById("rp-company").textContent = d.company_name || "";
+    const sigEl = document.getElementById("rp-signal");
+    sigEl.textContent = (d.signal || "neutral").toUpperCase();
+    sigEl.className = `rp-signal ${d.signal || "neutral"}`;
+
+    // Stats bar
+    const stats = [];
+    if (d.pe)          stats.push(`P/E ${d.pe}`);
+    if (d.target)      stats.push(`Target $${d.target}`);
+    if (d.beta)        stats.push(`Beta ${d.beta}`);
+    if (d.analyst_rec) stats.push(`Rec: ${d.analyst_rec.replace("_"," ")}`);
+    document.getElementById("rp-stats").innerHTML = stats.map(s =>
+      `<span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 7px;">${s}</span>`
+    ).join("");
+
+    document.getElementById("rp-take").textContent = d.put_selling_take || "";
+    document.getElementById("rp-pos").innerHTML =
+      (d.positives||[]).map(p => `<li>${p}</li>`).join("");
+    document.getElementById("rp-risks").innerHTML =
+      (d.risks||[]).map(r => `<li>${r}</li>`).join("");
+
+
+
+    document.getElementById("rp-loading").style.display = "none";
+    document.getElementById("rp-content").style.display = "flex";
+  } catch(e) {
+    document.getElementById("rp-loading").innerHTML =
+      `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  }
+}
+
+function closeResearch(evt) {
+  if (!evt || evt.target === document.getElementById("research-overlay")) {
+    document.getElementById("research-overlay").style.display = "none";
+  }
+}
+document.addEventListener("DOMContentLoaded", () => {
+  const ti = document.getElementById("totp-input");
+  if (ti) ti.addEventListener("keydown", e => { if (e.key === "Enter") doTotp(); });
+});
+</script>
+<!-- RESEARCH PANEL -->
+<div class="research-overlay" id="research-overlay" onclick="closeResearch(event)">
+  <div class="research-panel" id="research-panel">
+    <div class="rp-loading" id="rp-loading">
+      <div class="spinner" style="margin:0 auto 12px;width:20px;height:20px;"></div>
+      Searching for recent news and data…
+    </div>
+    <div id="rp-content" style="display:none;flex-direction:column;gap:16px;">
+      <div class="rp-header">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span class="rp-sym" id="rp-sym">—</span>
+          <span id="rp-company" style="font-size:11px;color:var(--muted);"></span>
+        </div>
+        <span class="rp-signal neutral" id="rp-signal">—</span>
+        <div id="rp-stats" style="font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;"></div>
+        <button class="rp-close" onclick="closeResearch()">✕ Close</button>
+      </div>
+      <div class="rp-section">
+        <h4>Put selling take</h4>
+        <div class="rp-take" id="rp-take"></div>
+      </div>
+      <div class="rp-section">
+        <h4>Positives</h4>
+        <ul class="rp-list pos" id="rp-pos"></ul>
+      </div>
+      <div class="rp-section">
+        <h4>Risks</h4>
+        <ul class="rp-list neg" id="rp-risks"></ul>
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,6 @@
+flask>=3.0
+yfinance>=0.2.40
+requests>=2.31
+praw>=7.7
+apscheduler>=3.10
+gunicorn>=21.0
