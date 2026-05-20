@@ -272,7 +272,18 @@ def start_scheduler():
         return None
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production-abcd1234")
+
+# Persistent token store — survives across requests (in-memory for single worker)
+# In production this would be Redis, but Railway single-worker is fine
+_token_store = {}
+
+def store_token(username, token):
+    _token_store["tw_token"] = token
+    _token_store["tw_username"] = username
+
+def get_stored_token():
+    return _token_store.get("tw_token")
 
 TW_BASE = "https://api.tastyworks.com"
 
@@ -896,10 +907,12 @@ def login_totp():
         return jsonify({"ok": False, "error": "Invalid code — check Google Authenticator and try again"}), 401
 
     session["tw_token"] = token
+    session.permanent = True
     accts  = tw_accounts(token)
     margin = next((a["account"]["account-number"] for a in accts
                    if not a["account"].get("is-closed")), None)
     session["account"] = margin
+    store_token(session.get("tw_username",""), token)
     return jsonify({"ok": True, "account": margin})
 
 @app.route("/api/pulse")
@@ -1683,6 +1696,125 @@ def tw_get_option_chain(symbol):
 def tw_get_watchlists_api():
     token = session.get("tw_token")
     if not token: return jsonify({"error": "Not logged in"}), 401
+    try:
+        r = requests.get(f"{TW_BASE}/watchlists",
+                         headers=tw_headers(token), timeout=10)
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+# ── MCP Bridge endpoints (use stored token, no browser session needed) ────────
+
+@app.route("/mcp/status")
+def mcp_status():
+    """Check if a tastytrade token is stored and valid."""
+    token = get_stored_token()
+    if not token:
+        return jsonify({"ok": False, "error": "No token stored — log in via the web UI first"})
+    # Quick validation
+    try:
+        r = requests.get(f"{TW_BASE}/customers/me/accounts",
+                         headers=tw_headers(token), timeout=8)
+        if r.status_code == 200:
+            accts = r.json()["data"]["items"]
+            margin = next((a["account"]["account-number"] for a in accts
+                           if not a["account"].get("is-closed")), None)
+            return jsonify({"ok": True, "account": margin})
+        return jsonify({"ok": False, "error": f"Token invalid: HTTP {r.status_code}"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+@app.route("/mcp/balances/<account>")
+def mcp_balances(account):
+    token = get_stored_token()
+    if not token: return jsonify({"error": "Not authenticated"}), 401
+    try:
+        r = requests.get(f"{TW_BASE}/accounts/{account}/balances",
+                         headers=tw_headers(token), timeout=10)
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/mcp/positions/<account>")
+def mcp_positions(account):
+    token = get_stored_token()
+    if not token: return jsonify({"error": "Not authenticated"}), 401
+    symbol = request.args.get("symbol")
+    try:
+        url = f"{TW_BASE}/accounts/{account}/positions"
+        if symbol: url += f"?underlying-symbol={symbol}"
+        r = requests.get(url, headers=tw_headers(token), timeout=10)
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/mcp/orders/<account>")
+def mcp_orders(account):
+    token = get_stored_token()
+    if not token: return jsonify({"error": "Not authenticated"}), 401
+    try:
+        r = requests.get(f"{TW_BASE}/accounts/{account}/orders",
+                         headers=tw_headers(token), timeout=10)
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/mcp/metrics")
+def mcp_metrics():
+    token = get_stored_token()
+    if not token: return jsonify({"error": "Not authenticated"}), 401
+    symbols = request.args.get("symbols", "")
+    try:
+        r = requests.get(f"{TW_BASE}/market-metrics",
+                         params={"symbols": symbols},
+                         headers=tw_headers(token), timeout=15)
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/mcp/option-chain/<symbol>")
+def mcp_option_chain(symbol):
+    token = get_stored_token()
+    if not token: return jsonify({"error": "Not authenticated"}), 401
+    try:
+        r = requests.get(f"{TW_BASE}/option-chains/{symbol}/nested",
+                         headers=tw_headers(token), timeout=15)
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/mcp/transactions/<account>")
+def mcp_transactions(account):
+    token = get_stored_token()
+    if not token: return jsonify({"error": "Not authenticated"}), 401
+    start = request.args.get("start_date", (date.today() - timedelta(days=30)).isoformat())
+    end   = request.args.get("end_date", date.today().isoformat())
+    try:
+        r = requests.get(f"{TW_BASE}/accounts/{account}/transactions",
+                         params={"start-date": start, "end-date": end, "per-page": 250},
+                         headers=tw_headers(token), timeout=15)
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/mcp/nlv-history/<account>")
+def mcp_nlv_history(account):
+    token = get_stored_token()
+    if not token: return jsonify({"error": "Not authenticated"}), 401
+    time_back = request.args.get("time_back", "1m")
+    try:
+        r = requests.get(f"{TW_BASE}/accounts/{account}/net-liq-history",
+                         params={"time-back": time_back},
+                         headers=tw_headers(token), timeout=10)
+        return jsonify(r.json())
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route("/mcp/watchlists")
+def mcp_watchlists():
+    token = get_stored_token()
+    if not token: return jsonify({"error": "Not authenticated"}), 401
     try:
         r = requests.get(f"{TW_BASE}/watchlists",
                          headers=tw_headers(token), timeout=10)
