@@ -2072,7 +2072,8 @@ def mcp_endpoint():
     try:
         raw = request.get_data(as_text=True)
         print(f"MCP POST raw body: {raw[:500]}")
-        body = json.loads(raw) if raw else {}
+        import json as _json
+        body = _json.loads(raw) if raw else {}
     except Exception as e:
         print(f"MCP parse error: {e}")
         resp = jsonify({"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":None})
