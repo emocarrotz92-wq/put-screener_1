@@ -274,8 +274,7 @@ def start_scheduler():
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-production-abcd1234")
 
-# Persistent token store — survives across requests (in-memory for single worker)
-# In production this would be Redis, but Railway single-worker is fine
+# Persistent token store
 _token_store = {}
 
 def store_token(username, token):
@@ -283,7 +282,22 @@ def store_token(username, token):
     _token_store["tw_username"] = username
 
 def get_stored_token():
-    return _token_store.get("tw_token")
+    # Return cached token if available
+    if _token_store.get("tw_token"):
+        return _token_store["tw_token"]
+    # Auto-login using environment variables if set
+    username = os.environ.get("TW_USERNAME","")
+    password = os.environ.get("TW_PASSWORD","")
+    if username and password:
+        print("Auto-login from environment variables...")
+        status, value = tw_step1(username, password)
+        if status == "ok":
+            _token_store["tw_token"] = value
+            _token_store["tw_username"] = username
+            print("Auto-login successful")
+            return value
+        print(f"Auto-login failed: {status} {value}")
+    return None
 
 TW_BASE = "https://api.tastyworks.com"
 
