@@ -1822,6 +1822,268 @@ def mcp_watchlists():
     except Exception as e:
         return jsonify({"error": str(e)})
 
+
+# ── MCP SSE Protocol endpoints (for Claude custom connector) ──────────────────
+# Implements Model Context Protocol over Server-Sent Events
+# Add as custom connector: https://put-screener1-production.up.railway.app/mcp
+
+import time, uuid
+
+MCP_TOOLS = [
+    {
+        "name": "get_balances",
+        "description": "Get tastytrade account balances — NLV, buying power, deployed capital",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_number": {"type": "string", "description": "Account number, default 5WV80235"}
+            }
+        }
+    },
+    {
+        "name": "get_positions",
+        "description": "Get open positions with P&L and Greeks",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_number": {"type": "string"},
+                "symbol": {"type": "string", "description": "Optional: filter by underlying symbol"}
+            }
+        }
+    },
+    {
+        "name": "get_orders",
+        "description": "Get live and historical orders",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_number": {"type": "string"}
+            }
+        }
+    },
+    {
+        "name": "get_market_metrics",
+        "description": "Get IV rank, IV percentile, beta, liquidity for symbols",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "symbols": {"type": "string", "description": "Comma-separated symbols e.g. AAPL,TSLA"}
+            },
+            "required": ["symbols"]
+        }
+    },
+    {
+        "name": "get_option_chain",
+        "description": "Get full option chain for a symbol",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string"}
+            },
+            "required": ["symbol"]
+        }
+    },
+    {
+        "name": "get_transaction_history",
+        "description": "Get fills, fees, and transaction history",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_number": {"type": "string"},
+                "start_date": {"type": "string"},
+                "end_date": {"type": "string"}
+            }
+        }
+    },
+    {
+        "name": "get_net_liquidating_value_history",
+        "description": "Get account equity curve / NLV history",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_number": {"type": "string"},
+                "time_back": {"type": "string", "description": "1d,1w,1m,3m,6m,1y,all"}
+            }
+        }
+    },
+    {
+        "name": "get_watchlists",
+        "description": "Get user watchlists from tastytrade",
+        "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "check_status",
+        "description": "Check if tastytrade connection is active",
+        "inputSchema": {"type": "object", "properties": {}}
+    }
+]
+
+def dispatch_mcp_tool(name, arguments):
+    """Execute a tool call and return result."""
+    acct = arguments.get("account_number", "5WV80235")
+    token = get_stored_token()
+    if not token:
+        return {"error": "Not authenticated — log into the screener web UI first at the Railway URL"}
+
+    try:
+        if name == "check_status":
+            r = requests.get(f"{TW_BASE}/customers/me/accounts",
+                             headers=tw_headers(token), timeout=8)
+            if r.status_code == 200:
+                return {"status": "connected", "accounts": [a["account"]["account-number"]
+                        for a in r.json()["data"]["items"]]}
+            return {"status": "token_invalid", "http_status": r.status_code}
+
+        elif name == "get_balances":
+            r = requests.get(f"{TW_BASE}/accounts/{acct}/balances",
+                             headers=tw_headers(token), timeout=10)
+            return r.json()
+
+        elif name == "get_positions":
+            url = f"{TW_BASE}/accounts/{acct}/positions"
+            if arguments.get("symbol"):
+                url += f"?underlying-symbol={arguments['symbol']}"
+            r = requests.get(url, headers=tw_headers(token), timeout=10)
+            return r.json()
+
+        elif name == "get_orders":
+            r = requests.get(f"{TW_BASE}/accounts/{acct}/orders",
+                             headers=tw_headers(token), timeout=10)
+            return r.json()
+
+        elif name == "get_market_metrics":
+            r = requests.get(f"{TW_BASE}/market-metrics",
+                             params={"symbols": arguments.get("symbols","")},
+                             headers=tw_headers(token), timeout=15)
+            return r.json()
+
+        elif name == "get_option_chain":
+            r = requests.get(f"{TW_BASE}/option-chains/{arguments.get('symbol','SPY')}/nested",
+                             headers=tw_headers(token), timeout=15)
+            return r.json()
+
+        elif name == "get_transaction_history":
+            params = {}
+            if arguments.get("start_date"): params["start-date"] = arguments["start_date"]
+            if arguments.get("end_date"):   params["end-date"]   = arguments["end_date"]
+            params["per-page"] = 250
+            r = requests.get(f"{TW_BASE}/accounts/{acct}/transactions",
+                             params=params, headers=tw_headers(token), timeout=15)
+            return r.json()
+
+        elif name == "get_net_liquidating_value_history":
+            r = requests.get(f"{TW_BASE}/accounts/{acct}/net-liq-history",
+                             params={"time-back": arguments.get("time_back","1m")},
+                             headers=tw_headers(token), timeout=10)
+            return r.json()
+
+        elif name == "get_watchlists":
+            r = requests.get(f"{TW_BASE}/watchlists",
+                             headers=tw_headers(token), timeout=10)
+            return r.json()
+
+        else:
+            return {"error": f"Unknown tool: {name}"}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.route("/mcp/sse")
+def mcp_sse_endpoint():
+    """SSE endpoint for MCP protocol — add this URL as custom connector in Claude."""
+    from flask import Response, stream_with_context
+
+    def generate():
+        # Send endpoint info
+        session_id = str(uuid.uuid4())
+        msg = json.dumps({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {}
+        })
+        yield f"data: {msg}\n\n"
+
+        # Keep alive
+        while True:
+            time.sleep(15)
+            yield f": keepalive\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*"
+        }
+    )
+
+@app.route("/mcp", methods=["GET", "POST", "OPTIONS"])
+def mcp_endpoint():
+    """Main MCP JSON-RPC endpoint."""
+    if request.method == "OPTIONS":
+        resp = jsonify({})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return resp
+
+    if request.method == "GET":
+        # Return MCP server info
+        resp = jsonify({
+            "name": "tastytrade",
+            "version": "1.0.0",
+            "description": "Tastytrade brokerage account tools",
+            "capabilities": {"tools": {}}
+        })
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    # POST — handle JSON-RPC requests
+    try:
+        body = request.get_json(force=True)
+    except Exception:
+        return jsonify({"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":None}), 400
+
+    method  = body.get("method","")
+    params  = body.get("params", {})
+    req_id  = body.get("id")
+
+    if method == "initialize":
+        result = {
+            "protocolVersion": "2024-11-05",
+            "serverInfo": {"name": "tastytrade", "version": "1.0.0"},
+            "capabilities": {"tools": {}}
+        }
+    elif method == "tools/list":
+        result = {"tools": MCP_TOOLS}
+
+    elif method == "tools/call":
+        tool_name = params.get("name","")
+        arguments  = params.get("arguments", {})
+        data = dispatch_mcp_tool(tool_name, arguments)
+        result = {
+            "content": [{"type": "text", "text": json.dumps(data, indent=2)}]
+        }
+
+    elif method == "notifications/initialized":
+        resp = jsonify({"jsonrpc":"2.0","id":req_id,"result":{}})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    else:
+        resp = jsonify({
+            "jsonrpc":"2.0",
+            "error":{"code":-32601,"message":f"Method not found: {method}"},
+            "id": req_id
+        })
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp
+
+    resp = jsonify({"jsonrpc":"2.0","result":result,"id":req_id})
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
+
 if __name__ == "__main__":
     start_scheduler()
     port = int(os.environ.get("PORT", 5050))
