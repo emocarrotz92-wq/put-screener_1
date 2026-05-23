@@ -2050,6 +2050,7 @@ def mcp_sse_endpoint():
 @app.route("/mcp", methods=["GET", "POST", "OPTIONS"])
 def mcp_endpoint():
     """Main MCP JSON-RPC endpoint."""
+    import json
     if request.method == "OPTIONS":
         resp = jsonify({})
         resp.headers["Access-Control-Allow-Origin"] = "*"
