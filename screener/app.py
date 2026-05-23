@@ -1944,6 +1944,78 @@ MCP_TOOLS = [
         "name": "check_status",
         "description": "Check if tastytrade connection is active",
         "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "get_market_session",
+        "description": "Check if the market is currently open or closed, and when next session is",
+        "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
+        "name": "get_symbol_info",
+        "description": "Get company name, instrument type, and details for a symbol",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Stock ticker symbol e.g. AAPL"}
+            },
+            "required": ["symbol"]
+        }
+    },
+    {
+        "name": "get_trading_status",
+        "description": "Get account trading status — options level, day trade count, margin call status, short calls enabled",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_number": {"type": "string", "description": "Default: 5WV80235"}
+            }
+        }
+    },
+    {
+        "name": "get_earnings_history",
+        "description": "Get historical earnings report dates and EPS for a symbol",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string"},
+                "start_date": {"type": "string", "description": "YYYY-MM-DD, defaults to 1 year ago"}
+            },
+            "required": ["symbol"]
+        }
+    },
+    {
+        "name": "get_dividend_history",
+        "description": "Get historical dividend payment dates and amounts for a symbol",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string"}
+            },
+            "required": ["symbol"]
+        }
+    },
+    {
+        "name": "get_margin_requirements",
+        "description": "Get effective margin requirements for a specific symbol — naked option rates, equity rates",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_number": {"type": "string"},
+                "symbol": {"type": "string", "description": "Underlying symbol e.g. AAPL"}
+            },
+            "required": ["symbol"]
+        }
+    },
+    {
+        "name": "get_total_fees",
+        "description": "Get total fees paid for an account on a given date",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_number": {"type": "string"},
+                "date": {"type": "string", "description": "YYYY-MM-DD, defaults to today"}
+            }
+        }
     }
 ]
 
@@ -2009,6 +2081,54 @@ def dispatch_mcp_tool(name, arguments):
         elif name == "get_watchlists":
             r = requests.get(f"{TW_BASE}/watchlists",
                              headers=tw_headers(token), timeout=10)
+            return r.json()
+
+        elif name == "get_market_session":
+            r = requests.get(f"{TW_BASE}/market-time/equities/sessions/current",
+                             headers=tw_headers(token), timeout=8)
+            return r.json()
+
+        elif name == "get_symbol_info":
+            sym = arguments.get("symbol", "")
+            r = requests.get(f"{TW_BASE}/symbols/search/{sym}",
+                             headers=tw_headers(token), timeout=8)
+            return r.json()
+
+        elif name == "get_trading_status":
+            r = requests.get(f"{TW_BASE}/accounts/{acct}/trading-status",
+                             headers=tw_headers(token), timeout=8)
+            return r.json()
+
+        elif name == "get_earnings_history":
+            from datetime import date, timedelta
+            sym = arguments.get("symbol", "")
+            start = arguments.get("start_date",
+                                  (date.today() - timedelta(days=365)).isoformat())
+            r = requests.get(
+                f"{TW_BASE}/market-metrics/historic-corporate-events/earnings-reports/{sym}",
+                params={"start-date": start},
+                headers=tw_headers(token), timeout=10)
+            return r.json()
+
+        elif name == "get_dividend_history":
+            sym = arguments.get("symbol", "")
+            r = requests.get(
+                f"{TW_BASE}/market-metrics/historic-corporate-events/dividends/{sym}",
+                headers=tw_headers(token), timeout=10)
+            return r.json()
+
+        elif name == "get_margin_requirements":
+            sym = arguments.get("symbol", "")
+            r = requests.get(
+                f"{TW_BASE}/accounts/{acct}/margin-requirements/{sym}/effective",
+                headers=tw_headers(token), timeout=10)
+            return r.json()
+
+        elif name == "get_total_fees":
+            params = {}
+            if arguments.get("date"): params["date"] = arguments["date"]
+            r = requests.get(f"{TW_BASE}/accounts/{acct}/transactions/total-fees",
+                             params=params, headers=tw_headers(token), timeout=8)
             return r.json()
 
         else:
