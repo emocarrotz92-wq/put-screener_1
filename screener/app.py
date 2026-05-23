@@ -286,8 +286,8 @@ def get_stored_token():
     if _token_store.get("tw_token"):
         return _token_store["tw_token"]
     # Auto-login using environment variables if set
-    username = os.environ.get("TW_USERNAME","")
-    password = os.environ.get("TW_PASSWORD","")
+    username = os.environ.get("TASTYTRADE_USERNAME", os.environ.get("TW_USERNAME",""))
+    password = os.environ.get("TASTYTRADE_PASSWORD", os.environ.get("TW_PASSWORD",""))
     if username and password:
         print("Auto-login from environment variables...")
         status, value = tw_step1(username, password)
