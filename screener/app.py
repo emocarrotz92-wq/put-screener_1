@@ -2054,11 +2054,11 @@ def mcp_endpoint():
         resp = jsonify({})
         resp.headers["Access-Control-Allow-Origin"] = "*"
         resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept"
+        resp.headers["Access-Control-Max-Age"] = "86400"
         return resp
 
     if request.method == "GET":
-        # Return MCP server info
         resp = jsonify({
             "name": "tastytrade",
             "version": "1.0.0",
@@ -2070,13 +2070,19 @@ def mcp_endpoint():
 
     # POST — handle JSON-RPC requests
     try:
-        body = request.get_json(force=True)
-    except Exception:
-        return jsonify({"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":None}), 400
+        raw = request.get_data(as_text=True)
+        print(f"MCP POST raw body: {raw[:500]}")
+        body = json.loads(raw) if raw else {}
+    except Exception as e:
+        print(f"MCP parse error: {e}")
+        resp = jsonify({"jsonrpc":"2.0","error":{"code":-32700,"message":"Parse error"},"id":None})
+        resp.headers["Access-Control-Allow-Origin"] = "*"
+        return resp, 400
 
     method  = body.get("method","")
     params  = body.get("params", {})
     req_id  = body.get("id")
+    print(f"MCP method: {method} id: {req_id}")
 
     if method == "initialize":
         result = {
