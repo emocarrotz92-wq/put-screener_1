@@ -2016,6 +2016,17 @@ MCP_TOOLS = [
                 "date": {"type": "string", "description": "YYYY-MM-DD, defaults to today"}
             }
         }
+    },
+    {
+        "name": "get_quotes",
+        "description": "Get current price, bid, ask, volume and change for one or more symbols. 15-min delayed but far more current than position data.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "symbols": {"type": "string", "description": "Comma-separated symbols e.g. AAPL,TSLA,IWM"}
+            },
+            "required": ["symbols"]
+        }
     }
 ]
 
@@ -2130,6 +2141,33 @@ def dispatch_mcp_tool(name, arguments):
             r = requests.get(f"{TW_BASE}/accounts/{acct}/transactions/total-fees",
                              params=params, headers=tw_headers(token), timeout=8)
             return r.json()
+
+        elif name == "get_quotes":
+            syms = [s.strip().upper() for s in arguments.get("symbols","").split(",") if s.strip()]
+            results = {}
+            import yfinance as _yf
+            for sym in syms:
+                try:
+                    info = _yf.Ticker(sym).info or {}
+                    price     = float(info.get("currentPrice") or info.get("regularMarketPrice") or 0)
+                    prev      = float(info.get("previousClose") or price)
+                    change    = round(price - prev, 2)
+                    change_pct= round((change / prev * 100) if prev else 0, 2)
+                    results[sym] = {
+                        "price":      round(price, 2),
+                        "bid":        float(info.get("bid") or 0),
+                        "ask":        float(info.get("ask") or 0),
+                        "prev_close": round(prev, 2),
+                        "change":     change,
+                        "change_pct": change_pct,
+                        "volume":     int(info.get("volume") or 0),
+                        "avg_volume": int(info.get("averageVolume") or 0),
+                        "day_high":   float(info.get("dayHigh") or 0),
+                        "day_low":    float(info.get("dayLow") or 0),
+                    }
+                except Exception as e:
+                    results[sym] = {"error": str(e)}
+            return results
 
         else:
             return {"error": f"Unknown tool: {name}"}
